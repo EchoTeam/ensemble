@@ -6,6 +6,8 @@ Cluster jobs distribution and orchestration library for Clojure
       [com.aboutecho.ensemble/ensemble "0.1.0"]
     ]
 
+[![Build Status](https://travis-ci.org/EchoTeam/ensemble.png?branch=master)](https://travis-ci.org/EchoTeam/ensemble)
+
 ## Jobs distribution
 
 Ensemble uses ZooKeeper to coordinate, so you'll need one installed.
