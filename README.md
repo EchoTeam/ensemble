@@ -47,7 +47,7 @@ to stay alive and not stall.
           (process/add-finalizer #(.close stream))
           (loop []
             (on-data (.readLine stream))
-            (process/heertbeat)
+            (process/heartbeat)
             (recur))))
       { :name "twitter-stream" 
         :threshold  40000 })
