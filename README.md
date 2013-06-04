@@ -1,6 +1,6 @@
 # ensemble
 
-Cluster jobs distribution and orchestration library for Clojure
+Jobs distribution and orchestration as a library for Clojure
 
     :dependencies [
       [com.aboutecho.ensemble/ensemble "0.1.0"]
@@ -9,6 +9,8 @@ Cluster jobs distribution and orchestration library for Clojure
 [![Build Status](https://travis-ci.org/EchoTeam/ensemble.png?branch=master)](https://travis-ci.org/EchoTeam/ensemble)
 
 ## Jobs distribution
+
+<img src="https://dl.dropboxusercontent.com/u/561580/lj/ensemble.jpg" width="600" height="270">
 
 Ensemble uses ZooKeeper to coordinate, so you'll need one installed.
 
@@ -19,7 +21,7 @@ Ensemble uses ZooKeeper to coordinate, so you'll need one installed.
     (let [cluster (ensemble/join-cluster {
                     :url   "zk://zookeeper.local:2181"
                     :ns    "/echo-ensemble"
-                    :name  "node32" })
+                    :name  "peer32" })
           jobs    (ensemble/peer-jobs cluster)]
       (add-watch jobs :state-change
         (fn [_ _ old new]
