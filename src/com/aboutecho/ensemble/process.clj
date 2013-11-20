@@ -40,6 +40,7 @@
 ;; Timed tasks
 
 (def ^Timer shared-timer (Timer. true))
+(def supervise-thread-pool (util/fixed-thread-pool "ensemble/supervise-thread-pool" 1))
 
 (defmacro as-timer-task ^Timer [& body]
  `(proxy [TimerTask] []
@@ -183,7 +184,7 @@
     (stop-process process)
     (assoc supervisor
       :process (spawn fun { :name   (str name "/proc") 
-                                  :daemon (:daemon supervisor false) }))))
+                            :daemon (:daemon supervisor false) }))))
 
 (defn- check-ll [{:keys [running process threshold] :as supervisor}]
   (if running
@@ -212,10 +213,10 @@
   (let [opts       (update-in opts [:name] sup-name)
         supervisor (agent (assoc opts :fun f :running true)
                      :error-handler #(logging/error %2 "Supervisor agent failed"))]
-    (send supervisor assoc
+    (send-via supervise-thread-pool supervisor assoc
       :timer (every (min 1000 (:threshold opts 1000))
-               (send supervisor check-ll)))))
+               (send-via supervise-thread-pool supervisor check-ll)))))
 
 (defn stop-supervisor [supervisor]
-  (send supervisor stop-ll))
+  (send-via supervise-thread-pool supervisor stop-ll))
 

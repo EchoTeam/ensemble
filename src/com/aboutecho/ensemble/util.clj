@@ -1,7 +1,22 @@
 (ns com.aboutecho.ensemble.util
   (:require
     [clojure.set :as set]
-    [clojure.string :as string]))
+    [clojure.string :as string])
+  (:import
+    [java.util.concurrent Executors ThreadFactory]))
+
+(def thread-number (atom 0))
+
+(defn thread-factory [pool-name]
+  (reify ThreadFactory
+    (newThread [this runnable]
+      (let [name (str "pool:" pool-name " thread:" (swap! thread-number inc))]
+        (doto
+          (Thread. runnable name)
+          (.setDaemon true))))))
+
+(defn fixed-thread-pool [pool-name size]
+  (Executors/newFixedThreadPool size (thread-factory pool-name)))
 
 (def enum->keyword 
   (memoize

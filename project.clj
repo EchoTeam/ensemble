@@ -1,4 +1,4 @@
-(defproject com.aboutecho.ensemble/ensemble "0.1.0"
+(defproject com.aboutecho.ensemble/ensemble "0.1.1"
   :description "Cluster control as a library."
   :url "http://github.com/echoteam/ensemble"
   :license {:name "The BSD 2-Clause License"

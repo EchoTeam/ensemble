@@ -13,7 +13,7 @@
     each job will be assigned to one and only one peer at a time and that peers
     will evenly distribute jobs between them.
 
-    Peer may have a role (basically, a regexp), which means that it will not 
+    Peer may have a role (basically, a regexp), which means that it will not
     execute every job, but only those jobs which match this regexp.
 
     Players is a name for a subset of peers that may (potentially) execute
@@ -48,7 +48,7 @@
 
         => @jobs
         {
-          \"twitter-slurp\" { :login ... :password ... :accounts ...  } 
+          \"twitter-slurp\" { :login ... :password ... :accounts ...  }
           \"validate\"      { :objects [...] }
           ...
         }
@@ -141,6 +141,8 @@
 (defn- hostname []
   (.getHostName (InetAddress/getLocalHost)))
 
+(def zk-thread-pool (util/fixed-thread-pool "ensemble/zk-thread-pool" 1))
+
 ;; Low-level zk operations
 
 (defn children-data
@@ -182,15 +184,15 @@
   (let [tree (agent {} :error-mode :continue)]
     (zookeeper/add-watcher zk
       (fn [event]
-        (send tree react zk event)))
+        (send-via zk-thread-pool tree react zk event)))
     (zookeeper/add-conn-watcher zk
-      (fn [state] 
+      (fn [state]
         (case state
-          :connected   (send tree react zk nil)
+          :connected   (send-via zk-thread-pool tree react zk nil)
           :suspended   :noop
-          :lost        (send tree (constantly nil))
-          :reconnected (send tree react zk nil))))
-    (send tree react zk nil)
+          :lost        (send-via zk-thread-pool tree (constantly nil))
+          :reconnected (send-via zk-thread-pool tree react zk nil))))
+    (send-via zk-thread-pool tree react zk nil)
     tree))
 
 ;; Consistent hashing
@@ -206,11 +208,11 @@
   ;; SHA-1 used for uniform value distribution
   (bit-and (->> (.hashString (com.google.common.hash.Hashing/sha1) s) (.asInt)) 0xffff))
 
-(defn closest-before 
+(defn closest-before
   "Given list of ints, finds left boundary of range where `el` lies"
   [coll el]
   (let [idx (Collections/binarySearch coll el compare)]
-    (cond 
+    (cond
       (= -1 idx) -1
       (neg? idx) (coll (- -2 idx))
       :else      (coll idx))))
@@ -308,4 +310,5 @@
   "Unregister current peer in a cluster"
   [cluster]
   (zookeeper/close (:zk cluster))
-  (send (:tree cluster) (constantly nil)))
+  (send-via zk-thread-pool (:tree cluster) (constantly nil)))
+
