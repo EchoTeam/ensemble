@@ -4,13 +4,13 @@
     [com.aboutecho.ensemble.util :as util])
   (:import
     [java.net InetSocketAddress BindException]
-    [com.netflix.curator.retry RetryNTimes]
-    [com.netflix.curator.framework.api CuratorEventType CuratorListener]
-    [com.netflix.curator.framework CuratorFramework CuratorFrameworkFactory]
-    [com.netflix.curator.framework.state ConnectionStateListener]
+    [org.apache.curator.retry RetryNTimes]
+    [org.apache.curator.framework.api CuratorEventType CuratorListener]
+    [org.apache.curator.framework CuratorFramework CuratorFrameworkFactory]
+    [org.apache.curator.framework.state ConnectionStateListener]
     [org.apache.zookeeper Watcher ZooDefs$Ids CreateMode WatchedEvent
                           KeeperException$NoNodeException KeeperException$NodeExistsException]
-    [com.netflix.curator.test TestingServer]))
+    [org.apache.curator.test TestingServer]))
 
 ;; Helpers
 

@@ -7,6 +7,6 @@
   :dependencies [
     [org.clojure/clojure "1.5.1"]
     [org.clojure/tools.logging "0.2.6"]
-    [com.netflix.curator/curator-framework "1.3.3"]
-    [com.netflix.curator/curator-test "1.3.3"]
+    [org.apache.curator/curator-framework "2.3.0"]
+    [org.apache.curator/curator-test "2.3.0"]
   ])
