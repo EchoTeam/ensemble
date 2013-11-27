@@ -116,7 +116,7 @@
   [curator watcher]
   (.addListener (.getConnectionStateListenable curator) (as-connection-listener watcher)))
 
-(defn connect
+(defn create-client
   "`opts` include:
     :url string       Zookeeper host:port
     :ns  string       All zookeeper paths will be prepended with this string
@@ -133,8 +133,13 @@
                   session-timeout
                   conn-timeout
                   (RetryNTimes. 1 1000))]
-    (.start curator)
     curator))
+
+(defn start
+  "Start the client"
+  [curator]
+  (.start curator)
+  curator)
 
 (defn close
   "Idempotent way to close curator"
