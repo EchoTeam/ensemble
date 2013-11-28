@@ -4,13 +4,13 @@
     [com.aboutecho.ensemble.util :as util])
   (:import
     [java.net InetSocketAddress BindException]
-    [com.netflix.curator.retry RetryNTimes]
-    [com.netflix.curator.framework.api CuratorEventType CuratorListener]
-    [com.netflix.curator.framework CuratorFramework CuratorFrameworkFactory]
-    [com.netflix.curator.framework.state ConnectionStateListener]
+    [org.apache.curator.retry RetryNTimes]
+    [org.apache.curator.framework.api CuratorEventType CuratorListener]
+    [org.apache.curator.framework CuratorFramework CuratorFrameworkFactory]
+    [org.apache.curator.framework.state ConnectionStateListener]
     [org.apache.zookeeper Watcher ZooDefs$Ids CreateMode WatchedEvent
                           KeeperException$NoNodeException KeeperException$NodeExistsException]
-    [com.netflix.curator.test TestingServer]))
+    [org.apache.curator.test TestingServer]))
 
 ;; Helpers
 
@@ -116,7 +116,7 @@
   [curator watcher]
   (.addListener (.getConnectionStateListenable curator) (as-connection-listener watcher)))
 
-(defn connect
+(defn create-client
   "`opts` include:
     :url string       Zookeeper host:port
     :ns  string       All zookeeper paths will be prepended with this string
@@ -133,8 +133,13 @@
                   session-timeout
                   conn-timeout
                   (RetryNTimes. 1 1000))]
-    (.start curator)
     curator))
+
+(defn start
+  "Start the client"
+  [curator]
+  (.start curator)
+  curator)
 
 (defn close
   "Idempotent way to close curator"

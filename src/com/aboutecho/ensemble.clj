@@ -283,9 +283,7 @@
     (zookeeper/add-conn-watcher zk
       (fn [state]
         (when (#{:reconnected :connected} state)
-          (apply zookeeper/create-all zk node))))
-    (util/ignore [KeeperException$ConnectionLossException IllegalStateException]
-      (apply zookeeper/create-all zk node))))
+          (apply zookeeper/create-all zk node))))))
 
 (defn join-cluster
   "Register current peer in a cluster, subscribe to notifications.
@@ -296,12 +294,13 @@
      :weight int     Relative weight of peer in ring, defaults to 100
      :vnodes [short] Specific vector of vnodes (loaded from per-node storage?), 0..2^16"
   [& [opts]]
-  (let [zk   (util/apply-map zookeeper/connect opts)
+  (let [zk   (util/apply-map zookeeper/create-client opts)
         tree (subscribe zk)
         name (or (:name opts)
                  (System/getenv "ENSEMBLE_PEER")
                  (-> (hostname) (string/split #"\.") first))]
     (join zk name opts)
+    (zookeeper/start zk)
     { :name  name
       :zk    zk
       :tree  tree }))

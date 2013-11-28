@@ -6,7 +6,7 @@
 
 (deftest test-zookeeper []
   (with-open [server (zookeeper/server)
-              zk     (zookeeper/connect :url (:url server))]
+              zk     (zookeeper/start (zookeeper/create-client :url (:url server)))]
     (testing "basic operations"
       (zookeeper/create zk "/a" :persistent? true)
       (zookeeper/create zk "/a/b")

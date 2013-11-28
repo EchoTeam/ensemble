@@ -15,7 +15,7 @@
 
 (deftest test-sync-nodes
   (with-open [server (zookeeper/server)]
-    (with-open [zk (zookeeper/connect :url (:url server))]
+    (with-open [zk (zookeeper/start (zookeeper/create-client :url (:url server)))]
       (ensemble/sync-nodes zk "/some/path" {"ch1" {:id 1} "ch2" {:id 2} "ch3" {:id 3} "ch4" nil})
       (is (= (ensemble/children-data zk "/some/path")
              {"ch1" {:id 1} "ch2" {:id 2} "ch3" {:id 3} "ch4" nil}))
@@ -161,7 +161,7 @@
       "twitter.m2.large"  ["n1" "n2" "n3"])))
 
 (deftest test-subscribe
-  (let [zk (zookeeper/connect :url "zk://localhost:2382" :ns "/testsubscribe")] ;; connect to inactive server
+  (let [zk (zookeeper/start (zookeeper/create-client :url "zk://localhost:2382" :ns "/testsubscribe"))] ;; connect to inactive server
     (try
       (let [tree (ensemble/subscribe zk)]
         (util/wait 5000 (= @tree {}))
