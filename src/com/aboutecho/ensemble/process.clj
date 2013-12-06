@@ -95,11 +95,13 @@
     (add-finalizers [#(apply fn obj args)])
     obj))
 
+(def ^:dynamic *process*)
+
 (defn heartbeat
   "To be called from inside process to indicate it is still alive. Heartbeats
    are used by supervisor to determine if underlying process is stalled or not"
   []
-  (let [process (current)]
+  (let [process *process*]
     (when-let [meta (meta process)]
       (when (or (.isInterrupted process)
                 @(:stopped meta))
@@ -126,7 +128,8 @@
     (try
       (logging/debug "Process" (.getName (current)) "started")
       (add-finalizers (:finalizers opts))
-      (f)
+      (binding [*process* (current)]
+        (f))
       (logging/debug "Process" (.getName (current)) "completed")
       (catch InterruptedException e
         (logging/debug "Process" (.getName (current)) "stopped"))
