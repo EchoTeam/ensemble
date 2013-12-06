@@ -140,3 +140,24 @@
       (process/stop-supervisor sup)
       (util/wait 5000 (= @(:state res) [:closed]))
       (is (> @(:data  res) 3)))))
+
+(defn fn-with-subprocess []
+  (Thread/sleep 10)
+  (reduce +
+    (pmap (fn [i]
+            (Thread/sleep 10)
+            (process/heartbeat)
+            i)
+      (range 1 5))
+    ))
+
+(deftest test-subprocess-heartbeat
+  (let [res (resource)
+        started (System/currentTimeMillis)
+        prcss (process/spawn
+                fn-with-subprocess {:name "fn-with-subprocess" :finalizers [(finalize res)]})]
+    (Thread/sleep 100)
+    (util/wait 5000 (= @(:state res) [:closed]))
+    (let [meta (meta prcss)
+          last-beat (:heartbeat meta)]
+      (is (> @last-beat started)))))
