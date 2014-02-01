@@ -58,6 +58,26 @@
       (util/wait 5000 (= @(:state res) [:closed]))
       (is (= @(:data  res) 2))))
 
+  (testing "Start Kill listener"
+    (let [res     (resource)
+          starts  (atom 0)
+          kills   (atom 0)
+          process (process/spawn
+                    (fn []
+                      (swap! (:data res) inc)
+                      (Thread/sleep 10000))
+                    { :name "test-process"
+                      :listeners {:start #(when (= (:name %) "test-process")
+                                           (swap! starts inc))
+                                  :kill  #(when (= (:name %) "test-process")
+                                           (swap! kills inc))}
+                      :finalizers [(finalize res)]})]
+      (process/stop-process process)
+      (util/wait 5000 (= @(:state res) [:closed]))
+      (is (= @(:data  res) 2))
+      (is (= @starts 1))
+      (is (= @kills 1))))
+
   (testing "Adding a finalizer"
     (let [res1  (resource)
           res2  (resource)
@@ -161,3 +181,29 @@
     (let [meta (meta prcss)
           last-beat (:heartbeat meta)]
       (is (> @last-beat started)))))
+
+(deftest test-supervisor-listeners-invoked
+  (let [res (resource)
+        starts (atom 0)
+        stalls (atom 0)
+        kills (atom 0)
+        sup (process/supervise
+              (fn []
+                (loop []
+                  (swap! (:data res) inc)
+                  (Thread/sleep 150)
+                  (process/heartbeat)
+                  (recur)))
+              {:name       "test-sup-stalled"
+               :listeners  {:start   (fn [_] (swap! starts inc))
+                            :stalled (fn [_] (swap! stalls inc))
+                            :kill    (fn [_] (swap! kills inc))}
+               :finalizers [(finalize res)]
+               :threshold  25})]
+    (Thread/sleep 120)
+    (process/stop-supervisor sup)
+    (util/wait 5000 (= @(:state res) [:closed]))
+    (is (>= @(:data res) 4))
+    (is (>= @starts 3))
+    (is (>= @stalls 2))
+    (is (>= @kills 3))))
