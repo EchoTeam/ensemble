@@ -28,7 +28,18 @@
               ... consume q ...))))
 
     Now, if spawned thread dies, is considered stalled or is stopped,
-    finalizers will be called, freeing up all resources allocated."}
+    finalizers will be called, freeing up all resources allocated.
+
+    Both spawn and supervise support event listeners passed in options. Listener is
+    one argument function invoked in appropriate process lifecycle time. Supported
+    listeners are start, stalled and kill:
+
+        (spawn #(do-some-work)
+           { :name \"My-Job\"
+             :listeners
+                   {:start   (fn [opts] (logging/debug \"Starting process \" (:name opts)))
+                    :stalled (fn [opts] (logging/debug \"Stalled process \" (:name opts)))
+                    :kill    (fn [opts] (logging/debug \"Killed process \" (:name opts)))}})"}
   com.aboutecho.ensemble.process
   (:require
     [clojure.tools.logging :as logging]
@@ -108,8 +119,14 @@
         (throw (InterruptedException.)))
       (reset! (:heartbeat meta) (System/currentTimeMillis)))))
 
+(defn- trigger-listener [key opts]
+  (when-let [f (get-in opts [:listeners key])]
+    (try (f opts)
+         (catch Exception e (logging/error e (str "Failed running listener " key " on " opts))))))
+
 (defn stop-process [^Thread process]
   (when process
+    (trigger-listener :kill (meta process))
     (reset! (:stopped (meta process)) true)
     (.interrupt process)))
 
@@ -145,10 +162,13 @@
     :finalizers  On-close callbacks to be assigned to this process once started
     :daemon      Should this process prevent JVM exit? Defaults to false"
   [f & [opts]]
-  (let [meta { :finalizers (atom [])
-               :heartbeat  (atom (System/currentTimeMillis))
-               :stopped    (atom false) }
+  (let [meta {:finalizers (atom [])
+              :heartbeat  (atom (System/currentTimeMillis))
+              :listeners  (:listeners opts)
+              :name       (:name opts)
+              :stopped    (atom false)}
         name (process-name (:name opts))]
+    (trigger-listener :start meta)
     (doto
       (proxy [Thread IMeta] [(process-fn f opts) name]
         (meta [] meta))
@@ -180,14 +200,18 @@
       (dissoc :process :finalizers :timer))))
 
 (defn- restart-ll [supervisor reason]
-  (let [{:keys [fun name ^Thread process]} supervisor]
+  (let [{:keys [fun name ^Thread process]} supervisor
+        opts {:name      (str name "/proc")
+              :listeners (:listeners supervisor)
+              :daemon    (:daemon supervisor false)}]
     (if process
       (logging/debug "Process" (.getName process) "is" (str reason ", restarting"))
       (logging/debug "Process for" (:name supervisor) "is" (str reason ", starting")))
+    (when (= :stalled reason)
+      (trigger-listener :stalled opts))
     (stop-process process)
     (assoc supervisor
-      :process (spawn fun { :name   (str name "/proc") 
-                            :daemon (:daemon supervisor false) }))))
+      :process (spawn fun opts))))
 
 (defn- check-ll [{:keys [running process threshold] :as supervisor}]
   (if running
