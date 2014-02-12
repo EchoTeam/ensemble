@@ -3,7 +3,7 @@
 Jobs distribution and orchestration as a library for Clojure
 
     :dependencies [
-      [com.aboutecho.ensemble/ensemble "0.1.4"]
+      [com.aboutecho.ensemble/ensemble "0.1.5"]
     ]
 
 [![Build Status](https://travis-ci.org/EchoTeam/ensemble.png?branch=master)](https://travis-ci.org/EchoTeam/ensemble)

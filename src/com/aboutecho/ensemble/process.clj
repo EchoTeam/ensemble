@@ -81,6 +81,7 @@
     (.schedule shared-timer task# 0 ~period)
     task#))
 
+(def purger (every (* 5 1000) (.purge shared-timer)))
 
 ;; Processes
 
