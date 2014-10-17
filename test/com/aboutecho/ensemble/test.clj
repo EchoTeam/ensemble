@@ -7,25 +7,32 @@
   (:use clojure.test))
 
 (defmacro with-cluster [[sym opts] & body]
- `(let [~sym (ensemble/join-cluster ~opts)]
+ `(let [cluster# (ensemble/join-cluster ~opts)
+        ~sym cluster#]
     (try
       ~@body
       (finally
-        (ensemble/leave-cluster ~sym)))))
+        (ensemble/leave-cluster cluster#)))))
 
 (deftest test-sync-nodes
   (with-open [server (zookeeper/server)]
-    (with-open [zk (zookeeper/start (zookeeper/create-client :url (:url server)))]
-      (ensemble/sync-nodes zk "/some/path" {"ch1" {:id 1} "ch2" {:id 2} "ch3" {:id 3} "ch4" nil})
-      (is (= (ensemble/children-data zk "/some/path")
-             {"ch1" {:id 1} "ch2" {:id 2} "ch3" {:id 3} "ch4" nil}))
+    (with-cluster [cluster {:name "n1" :url (:url server)}]
+        (ensemble/sync-nodes cluster "/some/path" {"ch1" {:id 1} "ch2" {:id 2} "ch3" {:id 3} "ch4" nil})
+        (is (= (ensemble/children-data cluster "/some/path")
+               {"ch1@1014122588" {:id 1}
+                "ch2@1014122591" {:id 2}
+                "ch3@1014122590" {:id 3} 
+                "ch4@0" nil}))
 
-      (ensemble/sync-nodes zk "/some/path" {"ch1" {:id 1} "ch2" {:id 22} "ch4" {:id 4} "ch5" {:id 5}})
-      (is (= (ensemble/children-data zk "/some/path")
-             {"ch1" {:id 1} "ch2" {:id 22} "ch4" {:id 4} "ch5" {:id 5}}))
+        (ensemble/sync-nodes cluster "/some/path" {"ch1" {:id 1} "ch2" {:id 22} "ch4" {:id 4} "ch5" {:id 5}})
+        (is (= (ensemble/children-data cluster "/some/path")
+               {"ch1@1014122588" {:id 1}
+                "ch2@1014122571" {:id 22}
+                "ch4@1014122585" {:id 4}
+                "ch5@1014122584" {:id 5}}))
 
-      (ensemble/sync-nodes zk "/some/path" {})
-      (is (= (zookeeper/children zk "/some/path") nil)))))
+        (ensemble/sync-nodes cluster "/some/path" {})
+        (is (= (ensemble/children-data cluster "/some/path") {})))))
 
 (deftest test-closest-before
   (is (= -1 (ensemble/closest-before [10 20 30 40] 5)))
@@ -161,36 +168,30 @@
       "twitter.m2.large"  ["n1" "n2" "n3"])))
 
 (deftest test-subscribe
-  (let [zk (zookeeper/start (zookeeper/create-client :url "zk://localhost:2382" :ns "/testsubscribe"))] ;; connect to inactive server
-    (try
-      (let [tree (ensemble/subscribe zk)]
+  (with-cluster [{:keys [zk] :as cluster} {:name "n1" :url "zk://localhost:2382" :ns "/testsubscribe"}]
+      (let [tree (ensemble/subscribe cluster)]
         (util/wait 5000 (= @tree {}))
         (with-open [server (zookeeper/server :port 2382)]
           (zookeeper/create-all zk "/nodes" :persistent? true)
-          (util/wait 5000 (= @tree {:nodes {}}))
+          (util/wait 5000 (= (:nodes @tree) {}))
 
           (zookeeper/create zk "/nodes/n1")
-          (util/wait 5000 (= @tree {:nodes {"n1" nil}}))
+          (util/wait 5000 (= (:nodes @tree) {"n1" nil}))
 
           (zookeeper/create zk "/nodes/n2" :persistent? true)
-          (util/wait 5000 (= @tree {:nodes {"n1" nil "n2" nil}}))
+          (util/wait 5000 (= (:nodes @tree) {"n1" nil "n2" nil}))
 
           (zookeeper/delete zk "/nodes/n1")
-          (util/wait 5000 (= @tree {:nodes {"n2" nil}}))
+          (util/wait 5000 (= (:nodes @tree) {"n2" nil}))
 
           (zookeeper/delete zk "/nodes/n2")
-          (util/wait 5000 (= @tree {:nodes {}}))
+          (util/wait 5000 (= (:nodes @tree) {}))
 
           (zookeeper/delete zk "/nodes")
-          (util/wait 5000 (= @tree {}))
+          (util/wait 5000 (= (:nodes @tree) nil))
 
-          (zookeeper/create-all zk "/nodes/n3" :data (@#'ensemble/serialize {:x 1 :y "2"}))
-          (util/wait 5000 (= @tree {:nodes {"n3" {:x 1 :y "2"}}}))
-
-          ;; close before server to avoid long stacktrace
-          (zookeeper/close zk)))
-      (finally
-        (zookeeper/close zk)))))
+          (zookeeper/create-all zk "/nodes/n3" :data ((:serialize-fn cluster) {:x 1 :y "2"}))
+          (util/wait 5000 (= (:nodes @tree) {"n3" {:x 1 :y "2"}}))))))
 
 (deftest test-peer-jobs
   (with-open [server (zookeeper/server)]

@@ -52,10 +52,9 @@
   (into {}
     (map (fn [[k v]] [k (f v)]) m)))
 
-(defn map-diff [m1 m2]
-  {:add    (select-keys m2 (set/difference (set (keys m2)) (set (keys m1))))
-   :delete (select-keys m1 (set/difference (set (keys m1)) (set (keys m2))))
-   :update (into {} (for [[k v] m2 :when (not= (get m1 k v) v)] [k v]))})
+(defn set-diff [s1 s2]
+  {:add    (set/difference (set s2) (set s1))
+   :delete (set/difference (set s1) (set s2))})
 
 (defn transformed
   "Returns a ref that will contain 'live view' of another ref with `f` applied,

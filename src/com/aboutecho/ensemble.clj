@@ -141,32 +141,44 @@
 (defn- hostname []
   (.getHostName (InetAddress/getLocalHost)))
 
+(defn append-vhashes [m]
+  (->> m
+     (map (fn [[k v]] [(str k "@" (hash v)) v]))
+     (into {})))
+
+(defn trancate-vhashes [m]
+  (->> m
+     (map (fn [[k v]] [(string/replace k #"@-?\d+?$" "") v]))
+     (into {})))
+
 (def zk-thread-pool (util/fixed-thread-pool "ensemble/zk-thread-pool" 1))
 
 ;; Low-level zk operations
 
 (defn children-data
   "Wrapper around zookeeper/children-data which sorts the nodes and deserializes data"
-  [zk path & opts]
+  [{:keys [zk deserialize-fn]} path & opts]
   (->> (apply zookeeper/children-data zk path opts)
-    (util/map-vals deserialize )
+    (util/map-vals deserialize-fn)
     (into (sorted-map))))
 
 (defn sync-nodes
   "Compares current state of `root` znode and `new-children-data` provided,
    then eliminates the difference"
-  [zk root new-children-data]
+  [{:keys [zk serialize-fn]} root new-children-data]
   (zookeeper/create-all zk root :persistent? true)
-  (let [old  (children-data zk root)
-        diff (util/map-diff old new-children-data)]
-    (doseq [node (concat (keys (:delete diff)) (keys (:update diff)))]
+  (let [old-childrens (zookeeper/children zk root)
+        new-vhashed-data (append-vhashes new-children-data)
+        diff (util/set-diff old-childrens (keys new-vhashed-data))]
+    (doseq [node (:delete diff)]
       (util/ignore [KeeperException$NoNodeException]
         (zookeeper/delete zk (zookeeper/as-path root node))))
-    (doseq [[node data] (merge (:add diff) (:update diff))]
+    (doseq [node (:add diff)]
       (util/ignore [KeeperException$NoNodeException KeeperException$NodeExistsException]
-        (zookeeper/create zk (zookeeper/as-path root node) :persistent? true :data (serialize data))))))
+        (let [data (serialize-fn (get new-vhashed-data node))]
+          (zookeeper/create zk (zookeeper/as-path root node) :persistent? true :data data))))))
 
-(defn- react [tree zk event]
+(defn- react [tree {:keys [zk] :as cluster} event]
   ;; if nodes were modified during `react` call, it means that we have another
   ;; react in agent's queue already so it's ok to supress any single `react` call
   (util/ignore [KeeperException$NoNodeException KeeperException$NodeExistsException]
@@ -174,25 +186,25 @@
       (let [groups (zookeeper/children zk "/" :watch? true)]
         (into {}
           (for [group groups]
-            [(keyword group) (children-data zk (zookeeper/as-path group) :watch? true)]))))))
+            [(keyword group) (children-data cluster (zookeeper/as-path group) :watch? true)]))))))
 
 (defn subscribe
   "Returns a ref whose state always reflects the current state of \"/\" znode.
    Current implementation always digs only two levels deep, and re-reads
    everything on each change"
-  [zk]
+  [cluster]
   (let [tree (agent {} :error-mode :continue)]
-    (zookeeper/add-watcher zk
+    (zookeeper/add-watcher (:zk cluster)
       (fn [event]
-        (send-via zk-thread-pool tree react zk event)))
-    (zookeeper/add-conn-watcher zk
+        (send-via zk-thread-pool tree react cluster event)))
+    (zookeeper/add-conn-watcher (:zk cluster)
       (fn [state]
         (case state
-          :connected   (send-via zk-thread-pool tree react zk nil)
+          :connected   (send-via zk-thread-pool tree react cluster nil)
           :suspended   :noop
           :lost        (send-via zk-thread-pool tree (constantly nil))
-          :reconnected (send-via zk-thread-pool tree react zk nil))))
-    (send-via zk-thread-pool tree react zk nil)
+          :reconnected (send-via zk-thread-pool tree react cluster nil))))
+    (send-via zk-thread-pool tree react cluster nil)
     tree))
 
 ;; Consistent hashing
@@ -228,7 +240,7 @@
 ;; All puzzle together
 
 (defn sync-jobs [cluster jobs]
-  (sync-nodes (:zk cluster) "/jobs" jobs))
+  (sync-nodes cluster "/jobs" jobs))
 
 (defn players [job peers]
   (->> peers
@@ -246,6 +258,7 @@
   "Map of { peer => { job => job-data }}"
   [peers jobs]
   (->> jobs
+    trancate-vhashes
     (group-by
       (fn [[job job-data]]
         (let [players-peers (into (sorted-map)
@@ -268,11 +281,11 @@
       (when-not (or (empty? peers) (empty? jobs))
         ((jobs-distribution peers jobs) (:name cluster))))))
 
-(defn- join [zk name & [opts]]
+(defn- join [{:keys [zk serialize-fn]} name & [opts]]
   (let [data {:role     (:role opts #".*")
               :vnodes   (or (:vnodes opts) (vnodes (:weight opts 100)))
               :hostname (hostname)}
-        node [(zookeeper/as-path "/peers" name) :persistent? false :data (serialize data)]]
+        node [(zookeeper/as-path "/peers" name) :persistent? false :data (serialize-fn data)]]
     (zookeeper/add-watcher zk
       (fn [event]
         (when (and (= (:state event) :sync-connected)
@@ -285,6 +298,7 @@
         (when (#{:reconnected :connected} state)
           (apply zookeeper/create-all zk node))))))
 
+
 (defn join-cluster
   "Register current peer in a cluster, subscribe to notifications.
    `opts` include:
@@ -295,15 +309,17 @@
      :vnodes [short] Specific vector of vnodes (loaded from per-node storage?), 0..2^16"
   [& [opts]]
   (let [zk   (util/apply-map zookeeper/create-client opts)
-        tree (subscribe zk)
         name (or (:name opts)
                  (System/getenv "ENSEMBLE_PEER")
-                 (-> (hostname) (string/split #"\.") first))]
-    (join zk name opts)
+                 (-> (hostname) (string/split #"\.") first))
+        zk-spec {:serialize-fn (:serialize-fn opts serialize)
+                 :deserialize-fn (:deserialize-fn opts deserialize)
+                 :zk zk}
+        tree (subscribe zk-spec)]
+    (join zk-spec name opts)
     (zookeeper/start zk)
-    { :name  name
-      :zk    zk
-      :tree  tree }))
+    (merge zk-spec
+           {:name name, :tree tree})))
 
 (defn leave-cluster
   "Unregister current peer in a cluster"
